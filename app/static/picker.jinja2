@@ -1,0 +1,164 @@
+{% import "layouts/macros.jinja2" as macros %}
+{% extends "layouts/base-server.jinja2" %}
+
+{% block head %}
+  {{ super() }}
+  <script type="text/javascript">
+    var clientId = "{{ client_id }}";
+    var appId = "{{ app_id }}";
+    var picker_redirect = {{ do_redirect }};
+    var pickerApiLoaded = false;
+    var oauthToken;
+
+    function loadPicker() {
+      gapi.load('auth', { 'callback': onAuthApiLoad });
+      gapi.load('picker', { 'callback': onPickerApiLoad });
+    }
+
+    function onAuthApiLoad() {
+      var scope = ['https://www.googleapis.com/auth/drive.file'];
+      window.gapi.auth.authorize({
+        'client_id': clientId,
+        'scope': scope,
+        'immediate': false
+      }, handleAuthResult);
+    }
+
+    function onPickerApiLoad() {
+      pickerApiLoaded = true;
+      createPicker();
+    }
+
+    function handleAuthResult(authResult) {
+      if (authResult && !authResult.error) {
+        oauthToken = authResult.access_token;
+        createPicker();
+      }
+    }
+
+    // Create and render a Picker object for searching images.
+    function createPicker() {
+      if (pickerApiLoaded && oauthToken) {
+        var mydrive = new google.picker.DocsView(google.picker.ViewId.DOCS)
+          .setMode(google.picker.DocsViewMode.LIST)
+          .setIncludeFolders(true)
+          .setSelectFolderEnabled(true)
+          .setParent('root')
+          .setLabel("My Drive");
+        var sharedWithMe = new google.picker.DocsView(google.picker.FOLDERS)
+          .setMode(google.picker.DocsViewMode.LIST)
+          //.setIncludeFolders(true)
+          .setSelectFolderEnabled(true)
+          .setOwnedByMe(true)
+          .setQuery("*")
+          .setLabel("Shared With Me");
+        var sharedDrives = new google.picker.DocsView(google.picker.ViewId.DOCS)
+          .setEnableDrives(true)
+          .setMode(google.picker.DocsViewMode.LIST)
+          .setIncludeFolders(true)
+          .setSelectFolderEnabled(true);
+        var recent = new google.picker.DocsView(google.picker.ViewId.RECENTLY_PICKED)
+          .setMode(google.picker.DocsViewMode.LIST)
+          .setIncludeFolders(true)
+          .setSelectFolderEnabled(true);
+        var picker = new google.picker.PickerBuilder()
+          .disableFeature(google.picker.Feature.NAV_HIDDEN)
+          .disableFeature(google.picker.Feature.MINE_ONLY)
+          .enableFeature(google.picker.Feature.SUPPORT_DRIVES)
+          .setAppId(appId)
+          .setOAuthToken(oauthToken)
+          .addView(mydrive)
+          //.addView(sharedWithMe)
+          .addView(sharedDrives)
+          .addView(recent)
+          .setTitle("Choose a backup folder")
+          .setCallback(pickerCallback)
+          .build();
+        picker.setVisible(true);
+      }
+    }
+
+    function getQueryParams(params) {
+      let href = window.location;
+      //this expression is to get the query strings
+      let reg = new RegExp('[?&]' + params + '=([^&#]*)', 'i');
+      let queryString = reg.exec(href);
+      return queryString ? queryString[1] : null;
+    };
+
+    // A simple callback implementation.
+    function pickerCallback(data) {
+      if (data.action == google.picker.Action.PICKED) {
+        var message = "";
+        if (data.docs.length == 0) {
+          message = "No document was selected.  Please try selecting a folder again."
+        } else if (data.docs[0].mimeType != "application/vnd.google-apps.folder") {
+          // Has to be a folder.  Doesn't make sense otherwise.
+          message = "You can only upload backups to a folder.  Please select a folder instead."
+        }
+
+        if (message.length > 0) {
+          alert(message);
+        } else if(picker_redirect) {
+          // Redirect back to the uer's home assistant with the now authorized folder id.
+          window.location.href = decodeURIComponent(getQueryParams("returnto")) + "?id=" + data.docs[0].id
+        } else {
+          $("#drive_folder_name").html(data.docs[0].name);
+          $("#drive_folder_id").val(data.docs[0].id);
+          $("#copy_folder_card").show();
+        }
+      }
+    }
+
+    $(document).ready(function () {
+      loadPicker();
+    });
+  </script>
+{% endblock %}
+{% block content %}
+  {% call macros.header(version) %}{% endcall %}
+  <main>
+    <div class="container">
+      <div class="section">
+      <div class="row" id="hello_card">
+          <div class="col s12 m9">
+              <div class="card">
+                  <div class="card-content">
+                      <span class="card-title">Opening folder picker...</span>
+                      <p>A window should be opening now asking you to log into your Google account and then to select a folder from your Google Drive.
+                      <ul class="browser-default">
+                        <li>If not, your popup blocker probably hates this page.  Click the button below to open the dialog.</li>
+                        <li>After you select a folder you'll be redirected back to the addon.</li>
+                        <li>If the folder you want to use doesn't exist yet, navigate to <a href="https://drive.google.com" target="_blank">Google Drive</a> and create it there first.  The folder picker doesn't let you create folders.</li>
+                        <li>The folder you select is where the addon will store backups from now on.  This should be what you want.</li>
+                        <li>If you'd like to know why this page has to be hosted on an external domain, <a target="_blank" href="https://github.com/sabeechen/hassio-google-drive-backup/blob/master/hassio-google-drive-backup/AUTHENTICATION.md">click here</a>.</li>
+                      </ul>
+                      </p>
+                      <div class="card-action">
+                          <a target="_blank" class="btn-flat" onclick="loadPicker();">Choose Folder</a>
+                      </div>
+                  </div>
+              </div>
+              <div class="card" id="copy_folder_card" style="display: none;">
+                <div class="card-content">
+                    <span class="card-title">Folder Choosen</span>
+                    <p>Below is the ID of the folder you chose, "<span id="drive_folder_name"></span>".  Copy this ID back into the settings dialog that brought you here 
+                      to start syncing backups into it.  You can close this window once its saved.
+                      <br>
+                      <textarea readonly id="drive_folder_id">
+                      </textarea>
+                    </p>
+                    <div class="card-action">
+                      <a id="copy_button" onclick="copyFromInput('drive_folder_id')" class="btn-flat">
+                        <i class="material-icons">content_copy</i>Copy
+                      </a>
+                    </div>
+                </div>
+            </div>
+          </div>
+      </div>
+    </div>
+    </div>
+  </main>
+{% endblock %}
+

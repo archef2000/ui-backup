@@ -1,0 +1,6 @@
+flask 
+pyzipper
+dnspython
+six
+requests
+prettytable
