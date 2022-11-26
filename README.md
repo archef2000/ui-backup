@@ -1,2 +1,2 @@
-# docker-google-drive-backup
+# docker-ui-backup
 Docker container for Backup creation and uploading to Google drive. The core API for the authentikation to GDrive is made and hosted by the Creator of the [Google Drive Backup Addon](https://github.com/sabeechen/hassio-google-drive-backup) Addon. The UI is also used but the backend needed to be remade from scratch to function without Home Assistant. If you like either one of the projects please donate to the original Creator.
