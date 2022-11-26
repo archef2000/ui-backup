@@ -1,4 +1,20 @@
-import datetime, multiprocessing, os, pyzipper, functools, socket, json, google_api, ping, settings, converting, time, threading, glob, backups, shutil, drive_requests, dns.resolver
+import datetime
+import multiprocessing
+import os
+import functools
+import json
+import time
+import threading
+import glob
+import shutil
+import pyzipper
+import drive_requests
+import dns.resolver
+import google_api
+import ping
+import settings
+import converting
+import backups
 
 def zip_file_folders(read_zip_file):
     size_json = {}
@@ -19,11 +35,15 @@ def zip_file_folders(read_zip_file):
             size_json[path] = size
     addons_json = []
     for item in size_json:
-        addons_json.append({"name": item,"slug":item.lower().replace(" ", "_"),"version": False,"size": converting.bytes_to_human(size_json[item])})
+        addons_json.append({
+            "name": item,
+            "slug": item.lower().replace(" ", "_"),"version": False,
+            "size": converting.bytes_to_human(size_json[item])
+        })
     return addons_json
-    
+
 def list_all_drive_files():
-    all = []
+    all_files_list = []
     for file in settings.drive_data_cache:
         if file["mimeType"] != "application/x-zip-compressed":
             continue
@@ -35,11 +55,11 @@ def list_all_drive_files():
         generated_json["name"] = file["appProperties"]["NAME"]
         generated_json["slug"] = file["appProperties"]["SLUG"]
         generated_json["size"] = converting.bytes_to_human(file["size"])
-        generated_json["status"] = "Drive Only" 
+        generated_json["status"] = "Drive Only"
         generated_json["date"] = datetime.datetime.fromtimestamp(int(float(file["appProperties"]["TIMESTAMP"]))).strftime('%a %b %m %H:%M:%S %Y')
         generated_json["createdAt"] = converting.seconds_to_human(time.time()-int(float(file["appProperties"]["TIMESTAMP"])),True)
         generated_json["isPending"] = False
-        generated_json["protected"] = bool(eval(file["appProperties"]["PROTECTED"]))
+        generated_json["protected"] = converting.str_to_bool(file["appProperties"]["PROTECTED"])
         generated_json["type"] = file["appProperties"]["TYPE"]
         generated_json["folders"] =[] 
         generated_json["addons"] = addons_json
@@ -55,13 +75,13 @@ def list_all_drive_files():
         generated_local["name"] = file["appProperties"]["NAME"]
         generated_local["key"] = "GoogleDrive"
         generated_local["size"] = file["size"]
-        generated_local["retained"] = bool(eval(file["appProperties"]["RETAINED"]))
+        generated_local["retained"] = converting.str_to_bool(file["appProperties"]["RETAINED"])
         generated_local["delete_next"] = False
         generated_local["slug"] = file["appProperties"]["SLUG"]
         generated_local["ignored"] = False
         generated_json["sources"] = [generated_local]
-        all.append(generated_json)
-    all_return = list({ each['name'] : each for each in all }.values())
+        all_files_list.append(generated_json)
+    all_return = list({ each['name'] : each for each in all_files_list }.values())
     settings.drive_file_list = all_return
     return all_return
 
@@ -75,7 +95,6 @@ def get_backup_info(drive_file_list, file,):
             return None
     except:
         return None
-
     with pyzipper.AESZipFile(filename, 'r', compression=pyzipper.ZIP_DEFLATED) as read_zip_file:
         addons_json = zip_file_folders(read_zip_file)
         note = read_zip_file.read("note.txt").decode() if "note.txt" in read_zip_file.namelist() else None
@@ -86,7 +105,7 @@ def get_backup_info(drive_file_list, file,):
     generated_json["name"] = backup_name
     generated_json["slug"] = backup_json_data["slug"]
     generated_json["size"] = converting.bytes_to_human(file_size)
-    generated_json["status"] = "HA Only" 
+    generated_json["status"] = "HA Only"
     generated_json["date"] = backup_json_data["creation_time"]
     generated_json["createdAt"] = converting.seconds_to_human(time.time()-backup_json_data["timestamp"],True)
     generated_json["isPending"] = False
@@ -175,14 +194,14 @@ def ping_googleapis():
         result = []
     ip = ""
     def ping_ip():
-            temp_ip = ip
-            try:
-                ping.ping(str(temp_ip), 80, 0.5).ping(1)    
-                ping_out[str(temp_ip)] = "alive"
-            except:
-                ping_out[str(temp_ip)] = "offline"
+        temp_ip = ip
+        try:
+            ping.ping(str(temp_ip), 80, 0.5).ping(1)    
+            ping_out[str(temp_ip)] = "alive"
+        except:
+            ping_out[str(temp_ip)] = "offline"
     try:
-        for ip in result:    
+        for ip in result:
             threading.Thread(target=ping_ip, args=()).start()
         while True:
             if len(result) == len(ping_out):
@@ -196,8 +215,11 @@ def ping_googleapis():
     return settings.www_googleapis_com_ping_out
 
 def get_bootstrap():
+    timeout = time.time() + 2
+    while time.time() < timeout:
+        if not settings.refresh_drive_data: break
+        time.sleep(0.1)
     config_settings = google_api.generate_config() # 0,03
-    start = time.time()
     thread = threading.Thread(target = backups.last)
     thread.start()
     thread_2 = threading.Thread(target = backups.last_backup_drive)
@@ -213,7 +235,8 @@ def get_bootstrap():
     drive_retained = drive_requests.drive_retained() # 0
     count_drive = drive_requests.count_backup_drive() # 0
     next_backup = backups.next(last_backup) # 0,002
-    total, used, free = shutil.disk_usage("/") # 0
+    drive_backups_size = drive_requests.folder_size()
+    free = shutil.disk_usage("/")[2] # 0
     rest_json_config = {
         "sources": {
             "HomeAssistant": {
@@ -244,14 +267,14 @@ def get_bootstrap():
                 "icon": "google-drive",
                 "ignored": 0,
                 "detail": settings.gdrive_info["user_email"],
-                "size": converting.bytes_to_human(settings.gdrive_info["quotaBytesUsed"]),
+                "size": converting.bytes_to_human(drive_backups_size),
                 "ignored_size": "0.0 B",
-                "free_space": converting.bytes_to_human(settings.gdrive_info["quotaBytesTotal"]-settings.gdrive_info["quotaBytesUsed"])
+                "free_space": converting.bytes_to_human(settings.gdrive_info["quotaBytesTotal"]-drive_backups_size)
             }
         },
         "next_backup_text":  converting.seconds_to_human(next_backup-time.time(),True),
         "next_backup_machine": datetime.datetime.fromtimestamp(next_backup).strftime('%Y-%m-%dT%H:%M:%SZ'),
-        "next_backup_detail": datetime.datetime.fromtimestamp(next_backup).strftime('%a %b %m %H:%M:%S %Y'),    
+        "next_backup_detail": datetime.datetime.fromtimestamp(next_backup).strftime('%a %b %m %H:%M:%S %Y'),
         "last_backup_text": converting.seconds_to_human(time.time()-last_backup,True),
         "last_backup_machine": datetime.datetime.fromtimestamp(last_backup).strftime('%Y-%m-%dT%H:%M:%SZ'),
         "last_backup_detail": datetime.datetime.fromtimestamp(last_backup).strftime('%a %b %m %H:%M:%S %Y'),
@@ -287,5 +310,5 @@ def get_bootstrap():
     ping_google = ping_googleapis() # 1.1 start
     backup_info = get_all_backup_info() # 0,08 sec
     return_json = { **rest_json_config, **ping_google, **backup_info, **backup_name_keys}
-    settings.backup_schedule_running = return_json
+    settings.last_bootstrap_data = return_json
     return return_json

@@ -1,7 +1,16 @@
-
-import re, drive_requests, os, settings, google_api, base64, pyzipper, json, logging
-import tarfile, time, logger, urllib, backups, get_status, threading, schedule
-from flask import Flask,request,send_file,render_template,send_from_directory,request,redirect,jsonify
+import os
+import base64
+import json
+import urllib
+import threading
+from flask import Flask,request,send_file,render_template,send_from_directory,jsonify,Response
+import logger
+import schedule
+import drive_requests
+import google_api
+import get_status
+import settings
+import backups
 last_log_index = 0
 template_dir = os.path.abspath('./static/')
 app = Flask(__name__, template_folder=template_dir)
@@ -27,26 +36,26 @@ def backup():
     name = request.args.get("custom_name","")
     retain_ha = request.args.get("retain_ha", False,type=bool) == "true"
     retain_drive = request.args.get("retain_drive", False,type=bool) == "true"
-    note = request.args.get("note","")
+    new_note = request.args.get("note","")
     name=urllib.parse.unquote(name.encode("utf8"))
-    note=urllib.parse.unquote(note.encode("utf8"))
-    answer = backups.request(name,note=note,retain_ha=retain_ha,retain_drive=retain_drive)
+    new_note=urllib.parse.unquote(new_note.encode("utf8"))
+    answer = backups.request(name,note=new_note,retain_ha=retain_ha,retain_drive=retain_drive)
     return jsonify({"message": f"Requested backup '{answer}'"})
 
 @app.route('/bootstrap')
 def bootstrap():
     if len(settings.last_bootstrap_data) > 2:
-        bootstrap = settings.last_bootstrap_data
+        bootstrap_data = settings.last_bootstrap_data
     else:
-        bootstrap = get_status.get_bootstrap()
-        settings.last_bootstrap_data = bootstrap
-    data = f"bootstrap_update_data = {str(json.dumps(bootstrap, indent=4, sort_keys=True))};"
-    return data
+        bootstrap_data = get_status.get_bootstrap()
+    data = f"bootstrap_update_data = {str(json.dumps(bootstrap_data, indent=4, sort_keys=True))};"
+    return Response(data, mimetype='text/javascript')
 
 @app.route('/getstatus')
 def getstatus():
     json_ret = get_status.get_bootstrap()
-    return jsonify(json_ret)    
+    return jsonify(json_ret)
+
 default_context = {
     "backgroundColor": google_api.generate_config()["config"]["background_color"],
     "accentColor": google_api.generate_config()["config"]["accent_color"],
@@ -54,14 +63,18 @@ default_context = {
     "version": 108,
     "coordEnabled": True,
     "showOpenDriveLink": True
-    
 }
+
 @app.route('/')
 def index():
     path_to_credentials = google_api.settings.DATA_FOLDER+'credentials.dat'
-    if os.path.exists(path_to_credentials) == True and os.stat(path_to_credentials).st_size > 0:
+    if os.path.exists(path_to_credentials) is True and os.stat(path_to_credentials).st_size > 0:
         return render_template(
-            'working.jinja2', 
+            'working.jinja2',
+            **default_context
+            )
+    return render_template(
+            'index.jinja2',
             **default_context
             )
 
@@ -70,7 +83,7 @@ def reauthenticate():
     return render_template(
             'index.jinja2',
             **default_context
-            )  
+            )
 
 @app.route('/makeanissue', methods = ['GET', 'POST'])
 def makeanissue():
@@ -97,28 +110,24 @@ def saveconfig():
 @app.route('/token', methods = ['POST', 'GET'])
 def token():
     base64_creds = request.args.get('creds', default = 'none', type = str)
-    redirect_url = request.args.get('host', default = 'none', type = str)
-    if request.method == 'POST':
+    # redirect_url = request.args.get('host', default = 'none', type = str)
+    if len(str(base64_creds)) > 500:
+        creds = base64.b64decode(base64_creds)
+        google_json = creds.decode("utf-8")
+        with open(settings.DATA_FOLDER + "credentials.dat", "w", encoding="utf-8") as f:
+            f.write(google_json)
         return jsonify({"message": "Success"})
     else:
-        if len(str(base64_creds)) > 500:
-            creds = base64.b64decode(base64_creds)
-            google_json = creds.decode("utf-8")
-            with open(settings.DATA_FOLDER + "credentials.dat", "w") as f:
-                f.write(google_json)
-            return redirect(redirect_url.replace("%2F", "/"), 307)
-        else:
-            return return_html("Plese supply more required parameters."), 400
+        return return_html("Plese supply more required parameters."), 400
 
 @app.route("/log", methods = ['POST', 'GET'])
 def log():
-    format = request.args.get('format', default = 'download', type = str)
+    format_type = request.args.get('format', default = 'download', type = str)
     catchup = request.args.get('catchup', default = False, type = bool)  
-    if format == 'download':
+    if format_type == 'download':
         return send_file(settings.LOG_FILE, as_attachment=True, download_name="Backup_log.txt")
     headers = ""
-    
-    if format == "view":
+    if format_type == "view":
         return render_template(
                 "logs.jinja2",
                 bmc_logo_path= "static/" + settings.PROGRAMM_VERSION + "/images/bmc.svg", 
@@ -126,61 +135,53 @@ def log():
                 )
     if not catchup:
         settings.last_log_index = 0
-    if format == "html":
+    if format_type == "html":
         content_type = 'text/html'
     else:
         content_type = 'text/plain'
         headers = {'Content-Disposition': 'attachment; filename="backup.log"'}
     def log_level(line):
         log_colors={
-            "DEBUG": "console-debug",    
-            "WARN": "console-warning",  
-            "ERROR": "console-error",    
+            "DEBUG": "console-debug",
+            "WARN": "console-warning",
+            "ERROR": "console-error",
             "CRITICAL": "console-critical"
-            },
+            }
         for color in log_colors[0]:
             if color[0] in line:
                 return log_colors[0][color]
         return "console-default"
     def content():
-        html = format == "colored"
-        if format == "html":
+        if format_type == "html":
             yield "<html><head><title>Backup Log</title></head><body><pre>\n"
         while True:
-            if sum(1 for _ in open(settings.LOG_FILE)) == settings.last_log_index:
+            if sum(1 for _ in open(settings.LOG_FILE,encoding="utf-8")) == settings.last_log_index:
                 break
-            f = open(settings.LOG_FILE)
-            lines=f.readlines()
+            log_file = open(settings.LOG_FILE,encoding="utf-8")
+            lines=log_file.readlines()
             try:
                 line = lines[settings.last_log_index]
-            except:
-                num_log_linbes = sum(1 for _ in open(settings.LOG_FILE))
-                logger.error(f"Reading log line {settings.last_log_index} from {num_log_linbes}")
+            except IndexError:
+                num_log_linbes = sum(1 for _ in open(settings.LOG_FILE,encoding="utf-8"))
+                logger.error(f"Log line {settings.last_log_index} from {num_log_linbes} missing")
             yield "<span class='" + log_level(line) + "'>" + line.replace("\n", "   \n") + "</span>"
-            settings.last_log_index += 1      
-                   
-        if format == "html":
+            settings.last_log_index += 1
+        if format_type == "html":
             yield "</pre></body>\n"
     return app.response_class(content(), mimetype=content_type, headers=headers)
 
 @app.route("/download")
 def download():
-    if request.method == "POST":
-        slug = request.json.get("slug","")
-    else:
-        slug = request.args.get("slug","")
-    if any(not c.isalnum() for c in slug) and len(slug) != 8:
-        return jsonify({"http_status": 500, "error_type": "generic_error", "message": "Slug is invalid"})
-    try:
+    slug = request.args.get("slug","")
+    if any(not c.isalnum() for c in slug) or len(slug) != 8:
+        return jsonify({"http_status":500,"error_type":"generic_error","message":"Slug invalid"})
+    name = backups.get_name(slug)
+    if not name:
+        drive_requests.download(slug)
         name = backups.get_name(slug)
-        if not name:
-            raise
+    if name:
         filename = backups.get_filename(name)
-        if not os.path.exists(filename):
-            raise
         return send_file(filename)
-    except:
-        return return_html("File does not exist."), 404
 
 @app.route("/retain", methods = ['POST', 'GET'])
 def retain():
@@ -231,7 +232,7 @@ def deleteSnapshot():
     if delete_drive:
         if drive_requests.drive_file_exists(slug):
             file_id = drive_requests.get_file_id(slug)
-            answer = drive_requests.delete_file(file_id)
+            drive_requests.delete_file(file_id)
             if not delete_ha:
                 success = True
         else:
@@ -248,13 +249,15 @@ def upload():
     if len(slug) != 8:
         return jsonify({"message": "Slug is invalid"})
     drive_exists = drive_requests.drive_file_exists(slug)
-    local_exists = os.path.isfile(os.path.join(settings.BACKUP_FOLDER,name+ ".zip"))
-    if local_exists and drive_exists:
-        return jsonify({"message": "Backup already in both places"})
+    name = backups.get_name(slug)
+    if name:
+        local_exists = os.path.isfile(os.path.join(settings.BACKUP_FOLDER,name+ ".zip"))
+        if local_exists and drive_exists:
+            return jsonify({"message": "Backup already in both places"})
     if drive_exists:
         friendly_name = drive_requests.download(slug)
         return jsonify({"message": f"Downloaded {friendly_name} from Google drive"})
-    name = backups.get_name(slug)
+    
     if local_exists:
         drive_requests.upload_file(name)
         return jsonify({"message": f"Uploaded {name} to Google drive"})
@@ -278,11 +281,11 @@ def logo(filename):
 def note():
     if request.method == "POST":
         slug = request.json.get("slug","")
-        note = request.json.get("note","")
+        new_note = request.json.get("note","")
     else:
         slug = request.args.get("slug","")
-        note = request.args.get("note","")
-    note=urllib.parse.unquote(note.encode("utf8"))
-    drive_requests.set_note(slug,note,)
-    backups.set_note(slug, note,)
+        new_note = request.args.get("note","")
+    new_note=urllib.parse.unquote(new_note.encode("utf8"))
+    drive_requests.set_note(slug,new_note,)
+    backups.set_note(slug, new_note,)
     return jsonify({"message": "Updated the backup's note"})

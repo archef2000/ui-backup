@@ -1,8 +1,18 @@
-
-import settings, queue, google_api, requests, drive_requests
-import multiprocessing, json, os, random, pyzipper, time
-import datetime, string, logger, sys, glob,threading, converting
+import sys
+import json
+import os
+import random
+import time
+import threading
+import string
+import multiprocessing
+import datetime
 from io import BytesIO
+import logger
+import pyzipper
+import settings
+import google_api
+import drive_requests
 
 def is_encrypted(filename):
     with pyzipper.AESZipFile(filename) as zip_file:
@@ -22,8 +32,8 @@ def gen_info(backup_name,protected):
     json_data["addons"] = []
     json_data["protected"] = protected
     json_data["exclude_folders"] = google_api.generate_config()["config"]["exclude_folders"]
-    jsonData=json.dumps(json_data, indent=4, sort_keys=True)
-    return jsonData
+    return_data=json.dumps(json_data, indent=4, sort_keys=True)
+    return return_data
 
 def gen_name(full_backup=True):
     config = google_api.generate_config()["config"]
@@ -40,17 +50,17 @@ def set_retention(slug, expect_retained_ha):
     filename= get_filename(get_name(slug))
     if os.path.isfile(filename):
         with pyzipper.ZipFile(filename) as zip_file:
-            retained_ha = "retain_ha" in zip_file.namelist()
-            if expect_retained_ha != retained_ha:
-                if retained_ha:
+            is_retained_ha = "retain_ha" in zip_file.namelist()
+            if expect_retained_ha != is_retained_ha:
+                if is_retained_ha:
                     zip_delete_ha = True
                 else:
                     with pyzipper.AESZipFile(filename,'a',compression=eval(settings.ZIP_COMPRESSION)) as zip_file:
                         zip_file.writestr("retain_ha", "")
                         return True
     if zip_delete_ha:
-        mf = BytesIO()
-        with pyzipper.AESZipFile(mf, 'w', compression=pyzipper.ZIP_DEFLATED) as zip_out, pyzipper.AESZipFile(filename) as zip_file:
+        memory_file = BytesIO()
+        with pyzipper.AESZipFile(memory_file, 'w', compression=pyzipper.ZIP_DEFLATED) as zip_out, pyzipper.AESZipFile(filename) as zip_file:
             exclude = "info.jsonnote.txtretain_ha"
             zip_out.writestr("info.json",zip_file.read("info.json"))
             if "note.txt" in zip_file.namelist():
@@ -67,7 +77,7 @@ def set_retention(slug, expect_retained_ha):
                 if (item.filename not in exclude):
                     zip_out.writestr(item, buffer)
         with open(filename, "wb") as f:
-            f.write(mf.getvalue())
+            f.write(memory_file.getvalue())
     return True
 
 def is_backup(filename):
@@ -102,7 +112,6 @@ def _create(backup_name,note,retain_ha,retain_drive):
     backup_zip_name = os.path.join(settings.BACKUP_FOLDER, backup_name + ".zip")
     password=backup_config["backup_password"]
     protected = password != ""
-           
     backup_info = gen_info(backup_name,protected)
     json_backup_info = json.loads(backup_info)
     settings.running_backup_info = {
@@ -131,11 +140,10 @@ def _create(backup_name,note,retain_ha,retain_drive):
             if retain_ha:
                 zip_file.writestr("retain_ha", "")
             if retain_drive:
-                zip_file.writestr("retain_drive", "")        
+                zip_file.writestr("retain_drive", "")
             if protected:
                 zip_file.setencryption(pyzipper.WZ_AES, nbits=256)
                 zip_file.pwd=password.encode()
-
             for root, folders, files in os.walk(settings.SOURCE_FOLDER):
                 for folder_name in folders:
                     absolute_path = os.path.join(root, folder_name)
@@ -164,9 +172,7 @@ def _create(backup_name,note,retain_ha,retain_drive):
         zip_file.close()
         settings.backup_running = False
         settings.running_backup_info = {}
-    
-    threading.Thread(target=drive_requests.upload_file, args=(backup_name,), daemon = True ).start()
-    
+    threading.Thread(target=drive_requests.upload_file, args=(backup_name,)).start()
     return backup_name
 
 def is_excluded(backup_name, backup_config, absolute_path, name):
@@ -181,7 +187,7 @@ def is_excluded(backup_name, backup_config, absolute_path, name):
     if len(backup_config["exclude_folders"]) == 0 and (list(filter(name.startswith, backup_config["extra_exclude_folders"].split(","))) != []):
         return False
     if is_backup(absolute_path):
-        return False    
+        return False
     return True
 
 def get_name(slug):
@@ -190,9 +196,9 @@ def get_name(slug):
         if not pyzipper.is_zipfile(file):
             continue
         with pyzipper.ZipFile(file, 'r', compression=pyzipper.ZIP_DEFLATED) as read_zip_file:
-            dict = json.loads(read_zip_file.read("info.json"))
-            if dict["slug"] == slug:
-                return dict["name"]
+            info_json = json.loads(read_zip_file.read("info.json"))
+            if info_json["slug"] == slug:
+                return info_json["name"]
     return False
 
 def delete(slug):
@@ -208,13 +214,13 @@ def delete(slug):
         return False, message
 
 def get_filename(name):
-        filename = os.path.join(settings.BACKUP_FOLDER, name+".zip")
-        if os.path.isfile(filename):
-            return filename
-        filename = os.path.join(settings.BACKUP_FOLDER, name)
-        if os.path.isfile(filename):
-            return filename 
-        return False
+    filename = os.path.join(settings.BACKUP_FOLDER, name+".zip")
+    if os.path.isfile(filename):
+        return filename
+    filename = os.path.join(settings.BACKUP_FOLDER, name)
+    if os.path.isfile(filename):
+        return filename
+    return False
 
 def retained_ha(name):
     retained = False
@@ -232,7 +238,7 @@ def number_ha_retained():
     numbers = results.count(True)
     settings.bootstrap_functions_data["number_ha_retained"] = numbers
     return numbers
-       
+
 def set_note(slug, note):
     name = get_name(slug)
     if name:
@@ -257,7 +263,7 @@ def set_note(slug, note):
                         zip_out.pwd=password.encode()
                     for item in zip_file.infolist():
                         buffer = zip_file.read(item.filename)
-                        if (item.filename not in exclude):
+                        if item.filename not in exclude:
                             zip_out.writestr(item, buffer)
         with open(filename, "wb") as f:
             f.write(mf.getvalue())
@@ -284,7 +290,7 @@ def backup_timestamp(filename):
         filename = os.path.join(settings.BACKUP_FOLDER,filename)
         with pyzipper.ZipFile(filename) as read_zip_file:
             return json.loads(read_zip_file.read("info.json"))["timestamp"]
-    except pyzipper.BadZipfile as message:
+    except pyzipper.BadZipfile:
         pass
 
 def last_backup_ha(last_timestamp_ha={}):
@@ -308,9 +314,6 @@ def last():
     last_backup = last_timestamp_drive if last_timestamp_drive > last_timestamp_ha else last_timestamp_ha
     settings.bootstrap_functions_data["last_backup"] = last_backup
     return last_backup
-
-
-
 
 def next(last_backup=0):
     if last_backup == 0:

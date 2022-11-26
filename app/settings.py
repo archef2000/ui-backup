@@ -1,8 +1,7 @@
-import os
 DATA_FOLDER = "./../data/"
 SOURCE_FOLDER = "./../source/"
-BACKUP_FOLDER = "./../backup/"
-DRIVE_FOLDER_NAME = "Docker Backup Test"
+BACKUP_FOLDER = "./../backups/"
+DRIVE_FOLDER_NAME = "Docker Backup 2"
 HABACKUP_AUTHENTICATION_URL = "https://habackup.io/drive/authorize"
 LOG_LEVEL = "info"
 LOG_FILE = "log.txt"
@@ -19,7 +18,11 @@ SELECT_FIELDS = "id,name,appProperties,size,trashed,mimeType,modifiedTime,capabi
 drive_file_list = []
 refresh_drive_data = True
 drive_data_cache = {}
-gdrive_info = {}
+gdrive_info = {
+    "user_email":"",
+    "quotaBytesUsed":0,
+    "quotaBytesTotal":0
+}
 bootstrap_functions_data = {}
 # Type:        10x sec: bytes:     1x sec:  size in MB:
 # ZIP_STORED   10.376 # 28489628 # 1.048  # 27.2 MB

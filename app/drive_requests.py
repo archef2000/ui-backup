@@ -1,9 +1,23 @@
-import requests, json, settings, datetime, time, os, urllib, base64, math, logger,pyzipper, get_status, converting
+import requests
+import json
+import datetime
+import time
+import os
+import urllib
+import base64
+import math
+import logger
+import pyzipper
+import get_status
+import settings
+import converting
 
 def valid_access_token():
     path = settings.DATA_FOLDER + "credentials.dat"
-    f = open(path, 'r')
-    data = json.load(f)
+    if not os.path.isfile(path):
+        return False
+    credentials_file = open(path, 'r', encoding="utf-8")
+    data = json.load(credentials_file)
     token_expiry = data['token_expiry']
     datemask1 = "%Y-%m-%dT%H:%M:%SZ"
     datemask2 = "%Y-%m-%d %H:%M:%S"
@@ -18,63 +32,66 @@ def valid_access_token():
 
 def access_token():
     path = settings.DATA_FOLDER + "credentials.dat"
-    f = open(path, 'r')
+    f = open(path, 'r', encoding="utf-8")
     data = json.load(f)
     if valid_access_token():
-        access_token = data['access_token']
-        return str(access_token)
+        google_access_token = data['access_token']
+        return str(google_access_token)
     else:
         refresh_token = data['refresh_token']
         answer = requests.post(
         'https://habackup.io/drive/refresh',
-        json={"refresh_token": refresh_token}
+        json={"refresh_token": refresh_token},
+        timeout=10
         )
         unicode_text = answer.content.decode('utf-8')
         data = json.loads(unicode_text)
         access_token = data['access_token']
         path = settings.DATA_FOLDER + "credentials.dat"
-        with open(path, 'w') as f:
+        with open(path, 'w', encoding="utf-8") as f:
             json.dump(data, f)
         return str(access_token)
 
 def folder_id():
+    if not os.path.exists(os.path.join(settings.DATA_FOLDER ,"credentials.dat")):
+        return ""
     folder_id_file = os.path.join(settings.DATA_FOLDER, "folder.dat")
     try:
-        folderid = open(folder_id_file).read()
+        folderid = open(folder_id_file, encoding="utf-8").read()
         if len(folderid) == 33:
-            return folderid 
+            return folderid
     except:
         if drive_folder_exists():
             q = 'name="'+settings.DRIVE_FOLDER_NAME+'" and mimeType="application/vnd.google-apps.folder" and trashed=false'
             files = requests.get(
                 "https://www.googleapis.com/drive/v3/files?&q=" + urllib.parse.quote(q),
-                headers={"Authorization": "Bearer " + access_token()},
+                headers={"Authorization": "Bearer " + access_token()}, timeout=10
             )
             data = json.loads(files.text)
             id = data['files'][0]['id']
         else:
             id = create_drive_folder()
-
         with open(folder_id_file, 'w') as folderid:
             folderid.write(id)
         return str(id)
 
 def get_filename(name):
-        filename = os.path.join(settings.BACKUP_FOLDER, name+".zip")
-        if os.path.isfile(filename):
-            return filename
-        return os.path.join(settings.BACKUP_FOLDER, name)
+    filename = os.path.join(settings.BACKUP_FOLDER, name+".zip")
+    if os.path.isfile(filename):
+        return filename
+    return os.path.join(settings.BACKUP_FOLDER, name)
 
 def create_drive_folder():
     headers = {
         'Authorization': 'Bearer ' + access_token(),
         'Content-Type': 'application/json; charset=UTF-8'
     }
-    querystring = '{ "name":"'+settings.DRIVE_FOLDER_NAME+'", "mimeType":"application/vnd.google-apps.folder" }'
+    querystring = '{"name":"'+settings.DRIVE_FOLDER_NAME+'","mimeType":"application/vnd.google-apps.folder"}'
     files = requests.post(
         'https://www.googleapis.com/drive/v3/files',
         headers=headers,
-        data=querystring
+        data=querystring,
+        timeout=10
     )
     data = json.loads(files.text)
     id = data['id']
@@ -85,17 +102,20 @@ def drive_folder_exists():
     files = requests.get(
         "https://www.googleapis.com/drive/v3/files?&q=" + urllib.parse.quote(q),
         headers={"Authorization": "Bearer " + access_token()},
+        timeout=10
     )
     data = json.loads(files.text)
     try:
-        id = data['files'][0]['id']
+        file_id = data['files'][0]['id']
         return True
     except:
         return False
 
 def get_file_size():
     response = requests.get("https://www.googleapis.com/drive/v2/about",
-                            headers={"Authorization": "Bearer "+access_token()})
+                            headers={"Authorization": "Bearer "+access_token()},
+                            timeout=10
+                            )
     data = response.json()
     bytes_total = data['quotaBytesTotal']
     bytes_used = data['quotaBytesUsed']
@@ -130,7 +150,6 @@ def upload_session_url(filename):
     currdate = datetime.datetime.strftime(datetime.datetime.today(),"%Y-%m-%dT%H:%M :%SZ")
     drive_creation_time = '"createdTime": "'+datetime.datetime.fromtimestamp(backup_json_data["timestamp"]).strftime("%Y-%m-%dT%H:%M:%SZ")+'"'
     drive_modificition_time = '"createdTime": "'+datetime.datetime.fromtimestamp(backup_json_data["timestamp"]).strftime("%Y-%m-%dT%H:%M:%SZ")+'"'
-
     properties = {
         "SLUG": backup_json_data["slug"],
         "NAME": backup_json_data["name"],
@@ -151,7 +170,8 @@ def upload_session_url(filename):
         'https://www.googleapis.com/upload/drive/v3/files',
         headers=headers,
         data=payload,
-        params=querystring
+        params=querystring,
+        timeout=10
     )
     if response.status_code == 200:
         sessionUri = response.headers['Location']
@@ -159,19 +179,20 @@ def upload_session_url(filename):
     else:
         return
 
-def set_note(file_id_slug,note):
+def set_note(file_id_slug,new_note):
     if len(file_id_slug) == 8:
         file_id_slug = get_file_id(file_id_slug)
     url = f"https://www.googleapis.com/drive/v3/files/{file_id_slug}/?fields=appProperties&supportsAllDrives=true" #&access_token" + access_token()
     headers = { 'Authorization': 'Bearer ' + access_token() }
-    note = "" if note is None else str(note)
-    json = {'appProperties': {'NOTE': note}, 'description': note}
+    new_note = "" if new_note is None else str(new_note)
+    json = {'appProperties': {'NOTE': new_note}, 'description': new_note}
     try:
         response = requests.request("PATCH", url, headers=headers, json=json)
         if response.status_code < 400:
+            settings.refresh_drive_data = True
             return True
     except:
-        pass
+        settings.refresh_drive_data = True
     return False
 
 def set_retention(file_id_slug, retention):
@@ -205,18 +226,20 @@ def upload_file(filename):
     in_file = open(file_name, "rb")
     try:
         if file_size <= 5242880:
-
             data2 = in_file.read()
             headers = {
                 'Content-Length': str(file_size),
                 'Content-Type': "application/x-zip-compressed"
             }
             response = requests.request(
-                "PUT", sessionUri, data=data2, headers=headers)
+                "PUT", sessionUri, data=data2, headers=headers, timeout=10)
+            settings.uploading_data_cache.pop(filename)
+            settings.refresh_drive_data = True
+            in_file.close()
             return response.content
         else:
             # https://stackoverflow.com/questions/39887303/resumable-upload-in-drive-rest-api-v3
-            start = time.time()
+            upload_start = time.time()
             in_file = open(file_name, "rb")
             chunk = in_file.read()
             BASE_CHUNK_SIZE = 256 * 1024 # 262144
@@ -238,9 +261,9 @@ def upload_file(filename):
                     'Content-Range': "bytes " + str(first_byte) +"-"+str(last_byte)+"/"+str(TOTAL_BYTES)
                 }
                 response = requests.request(
-                    "PUT", sessionUri, data=data2, headers=headers)
+                    "PUT", sessionUri, data=data2, headers=headers, timeout=10)
                 if response.status_code == 200 and times-1 == _:
-                    logger.debug(f"Uploaded backup { file_name } to Google Drive in {time.time()-start} seconds")
+                    logger.debug(f"Uploaded backup { file_name } to Google Drive in {time.time()-upload_start} seconds")
                     settings.uploading_data_cache.pop(filename)
                     settings.refresh_drive_data = True
                     in_file.close()
@@ -248,13 +271,12 @@ def upload_file(filename):
                 byte_range = response.headers["Range"]
                 first_byte = byte_range.split("=",1)[1].split("-",1)[0]
                 last_byte = byte_range.split("=",1)[1].split("-",1)[1]
-                percentage = str((int(last_byte)/file_size)*100)[:2]+"%"
+                # percentage = str((int(last_byte)/file_size)*100)[:2]+"%"
                 first_byte = int(last_byte)+1
                 last_byte = int(first_byte)+CHUNK_SIZE
     except:
         settings.refresh_drive_data = True
         settings.uploading_data_cache.pop(filename)
-        
 
 def download(slug_name):
     name = name_from_slug(slug_name)
@@ -266,9 +288,8 @@ def download(slug_name):
     settings.uploading_data_cache[name]["speed"] = 0
     settings.uploading_data_cache[name]["progress"] = 0    
     file_name =  os.path.join(settings.BACKUP_FOLDER, name)
-    id = get_file_id(slug_name)
-    
-    if not id:
+    file_id = get_file_id(slug_name)
+    if not file_id:
         logger.error("File not found in Google Drive")
         return False
     destination_file = open(file_name, "wb")
@@ -276,7 +297,9 @@ def download(slug_name):
         headers = {
             'Authorization': 'Bearer ' + access_token(),
         }
-        response = requests.get( "https://www.googleapis.com/drive/v3/files/"+id+"/?alt=media&supportsAllDrives=true", headers=headers)
+        response = requests.get(
+            f"https://www.googleapis.com/drive/v3/files/{file_id}/?alt=media&supportsAllDrives=true",
+            headers=headers, timeout=10)
         destination_file.write(response.content)
         if response.status_code == 200:
             destination_file.close()

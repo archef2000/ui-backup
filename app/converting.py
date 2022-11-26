@@ -1,14 +1,15 @@
-import re, datetime
+import re
+import datetime
 def human_to_seconds(string):
     type_string_list = ["seconds","minute", "hour", "day", "month", "year"]
     times_list_for_type = [1,60,60*60,60*60*24,60*60*24*30.43685,60*60*24*365]
     seconds = 0
     if str(string).isdigit():
-        return str(string)
+        return int(string)
     for parts in re.findall('\d*\D+',str(string)):
-        for type in type_string_list:
+        for type_string in type_string_list:
             if type in str.lower(parts):
-                index = type_string_list.index(type)
+                index = type_string_list.index(type_string)
                 try:
                     number = [int(s) for s in parts.split() if s.isdigit()][0]
                 except:
@@ -29,15 +30,14 @@ def seconds_to_human(string, single=False):
     comma_minutes = ""
     comma_seconds = ""
     left_seconds = 0
-    string = str(string).split(".")[0]
+    string = str(string).split(".", maxsplit=1)[0]
     if not str(string).isdigit():
         try:
             left_seconds = human_to_seconds(string)
         except:
             pass
-    else: 
+    else:
         left_seconds = int(string)
-    
     years = int(str(int(left_seconds)//(60*60*24*365)).split(".")[0])
     if years >= 1 and left_seconds >= (60*60*24*365) :
         years_string = "years"
@@ -52,7 +52,6 @@ def seconds_to_human(string, single=False):
             return f"{years} {years_string}"
         return_string= f"{years} {years_string}"
         left_seconds = left_seconds -int(str((years * (60*60*24*365))).split(".")[0])
-    
     months = int(str((int(left_seconds)//(2629743))).split(".")[0]) #2629743.83
     if months >= 1:
         months_string = "months"
@@ -66,7 +65,6 @@ def seconds_to_human(string, single=False):
             return f"{months} {months_string}"
         return_string= f"{return_string}{comma_months}{months} {months_string}"
         left_seconds = left_seconds -int(str((months * (2629743.83))).split(".")[0])
-
     days = int(str(int(left_seconds)//(60*60*24)).split(".")[0])
     if days >= 1:
         days_string = "days"
@@ -79,7 +77,6 @@ def seconds_to_human(string, single=False):
             return f"{days} {days_string}"
         return_string= f"{return_string}{comma_days}{days} {days_string}"
         left_seconds = left_seconds -(days * (60*60*24))
-
     hours = int(str(int(left_seconds)//(60*60)).split(".")[0])
     if hours >= 1:
         hours_string = "hours"
@@ -91,7 +88,6 @@ def seconds_to_human(string, single=False):
             return f"{hours} {hours_string}"
         return_string= f"{return_string}{comma_hours}{hours} {hours_string}"
         left_seconds = left_seconds -int(str((hours * (60*60))).split(".")[0])
-    
     minutes = int(str(int(left_seconds)//60).split(".")[0])
     if minutes >= 1:
         minutes_string = "minutes"
