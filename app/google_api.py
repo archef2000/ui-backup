@@ -1,13 +1,19 @@
-import converting
+"""
+Additional function for Google Drive.
+"""
+import socket
 import os
 import datetime
 import json
+import converting
 import settings
-import socket
 import pyzipper
 import drive_requests
 
 def get_folder():
+    """
+    Create a json dict containing the folder names and size.
+    """
     return_slug = []
     source_dir_list = os.listdir(settings.SOURCE_FOLDER)
     for item in source_dir_list:
@@ -21,23 +27,12 @@ def get_folder():
             path_type = "Folder"
         loop_json["description"] = f"{path_type} named {item}"
         return_slug.append(loop_json)
-    if os.path.isfile(os.path.join(settings.DATA_FOLDER,"options.json")):
-        exclude_list = list(json.load(open(os.path.join(settings.DATA_FOLDER,"options.json"),encoding="utf-8")).get("exclude_folders","").split(","))
-        for item in exclude_list:
-            if not item in source_dir_list:
-                loop_json = {}
-                loop_json["slug"] = item
-                loop_json["id"] = item
-                loop_json["name"] = item
-                if os.path.isfile(os.path.join(settings.SOURCE_FOLDER, item)):
-                    path_type = "File"
-                else:
-                    path_type = "Folder"
-                loop_json["description"] = f"{path_type} named {item}"
-                return_slug.append(loop_json)
-        return return_slug
+    return return_slug
 
 def backup_folder_size():
+    """
+    Get the space consumed by the local backups.
+    """
     folder_bytes_size = 0
     for file in os.listdir(settings.BACKUP_FOLDER):
         filename = os.path.join(settings.BACKUP_FOLDER,file)
@@ -46,7 +41,11 @@ def backup_folder_size():
     return folder_bytes_size
 
 def generate_config():
+    """
+    Generate a default configuration and fill it with the settings stored in the options file.
+    """
     result = {}
+    client_id = "933944288016-n35gnn2juc76ub7u5326ls0iaq9dgjgu.apps.googleusercontent.com"
     result["defaults"] = {
             "max_backups_in_ha": 4,
             "max_backups_in_google_drive": 4,
@@ -70,7 +69,7 @@ def generate_config():
             "google_drive_timeout_seconds": 180,
             "google_drive_page_size": 100,
             "alternate_dns_servers": "8.8.8.8,8.8.4.4",
-            "default_drive_client_id": "933944288016-n35gnn2juc76ub7u5326ls0iaq9dgjgu.apps.googleusercontent.com",
+            "default_drive_client_id": client_id,
             "maximum_upload_chunk_bytes": 10485760,
             "folder_file_path": "/data/folder.dat",
             "credentials_file_path": "/data/credentials.dat",
@@ -108,9 +107,10 @@ def generate_config():
             "snapshot_name": "Snapshot {year}-{month}-{day} {hr24}:{min}:{sec}",
             }
     none_list = {
-        "backup_time_of_day","backup_password","exclude_folders","extra_exclude_folders","exclude_addons","stop_addons",
-        "drive_ipv4","default_drive_client_secret","drive_picker_api_key","supervisor_url",
-        "hassio_header","server_project_id","snapshot_time_of_day","snapshot_password"}
+        "backup_time_of_day","backup_password","exclude_folders","extra_exclude_folders",
+        "exclude_addons","stop_addons","drive_ipv4","default_drive_client_secret",
+        "drive_picker_api_key","supervisor_url","hassio_header","server_project_id",
+        "snapshot_time_of_day","snapshot_password"}
     true_list = {"confirm_multiple_deletes","warn_for_low_space","enable_drive_upload"}
     false_list = {
             "ignore_upgrade_backups","delete_after_upload", "generational_delete_early",
@@ -129,13 +129,13 @@ def generate_config():
     for item in none_list:
         result["defaults"][item] = ""
     result["is_custom_creds"] = False
-    if os.path.isfile(os.path.join(settings.SOURCE_FOLDER, item)):
-        result["backup_folder"] = drive_requests.folder_id() # 1 sec for 10000 of 2 sec
+    result["config"] = result["defaults"].copy()
+    if os.path.isfile(os.path.join(settings.DATA_FOLDER,"credentials.dat")):
+        result["backup_folder"] = drive_requests.folder_id()
         with open(settings.DATA_FOLDER+'options.json',encoding="utf-8") as options_file:
             options_data = json.load(options_file)
         for item in options_data:
             result["config"][item] = options_data[item]
-    result["config"] = result["defaults"].copy()
     folders =  get_folder()
     list_memory = {"maximum_upload_chunk_bytes","google_drive_page_size",
                    "low_space_threshold","default_chunk_size"}
@@ -151,9 +151,11 @@ def generate_config():
     return result
 
 def gen_backup_name_keys():
+    """
+    Create all keys used for backup names.
+    """
     now = datetime.datetime.now()
     isotime = now.strftime('%Y-%m-%dT%I:%M:%S.%f+00:00')
-    # isotime = datetime.datetime.now().isoformat() + "+00:00"
     backup_name_keys =  {
     "{type}": "Full",
     "{year}": now.strftime('%Y'),
@@ -173,7 +175,7 @@ def gen_backup_name_keys():
     "{version_ha}": "2022.8.3",
     "{version_hassos}": "None",
     "{version_super}": "2022.08.3",
-    "{date}": now.strftime('%m/%d/%y'), 
+    "{date}": now.strftime('%m/%d/%y'),
     "{time}": now.strftime('%H:%M:%S'),
     "{datetime}": now.strftime('%a %b %m %H:%M:%S %Y'),
     "{isotime}": isotime,
@@ -182,36 +184,27 @@ def gen_backup_name_keys():
     return backup_name_keys[0]
 
 def save_config(rx_data):
+    """
+    Save the changed config entries to the options file.
+    """
     data = generate_config()
     for item in data["defaults"]:
-        try:
-            rx_data["config"][item]
-            if rx_data["config"][item] is None:
-                raise Exception()
-        except:
+        if not rx_data["config"].get(item,False):
             rx_data["config"][item] = data["defaults"][item]
     list_memory = {"maximum_upload_chunk_bytes", "low_space_threshold", "default_chunk_size"}
     for item in list_memory:
         rx_data["config"][item] = int(converting.human_to_bytes(rx_data["config"][item]))
     list_time = {"max_sync_interval_seconds","delete_ignored_after_days",
-    "google_drive_timeout_seconds", "google_drive_page_size", "backup_stale_seconds", "pending_backup_timeout_seconds",
-    "failed_backup_timeout_seconds", "new_backup_timeout_seconds", "download_timeout_seconds", "backup_startup_delay_minutes",
-    "exchanger_timeout_seconds"}
+    "google_drive_timeout_seconds", "google_drive_page_size", "backup_stale_seconds",
+    "pending_backup_timeout_seconds", "failed_backup_timeout_seconds", "new_backup_timeout_seconds",
+    "download_timeout_seconds", "backup_startup_delay_minutes", "exchanger_timeout_seconds"}
     for item in list_time:
-        rx_data["config"][item] = int(converting.human_to_seconds(rx_data["config"][item]))    
-    
+        rx_data["config"][item] = int(converting.human_to_seconds(rx_data["config"][item]))
     options_data = {}
     for item in rx_data['config']:
         if rx_data['config'][item] != data['defaults'][item]:
             options_data[item] = rx_data['config'][item]
-    options_data["extra_exclude_folders"] = data["config"]["extra_exclude_folders"]
-    with open(settings.DATA_FOLDER + 'options.json', 'w', encoding="utf-8") as f:
-        json.dump(options_data, f, indent=2)
-
-def get_backup_folder_size():
-    size = 0
-    for path, dirs, files in os.walk(settings.BACKUP_FOLDER):
-        for f in files:
-            fp = os.path.join(path, f)
-            size += os.path.getsize(fp)
-    return size
+    if data["config"]["extra_exclude_folders"]:
+        options_data["extra_exclude_folders"] = data["config"]["extra_exclude_folders"]
+    with open(settings.DATA_FOLDER + 'options.json', 'w', encoding="utf-8") as options_file:
+        json.dump(options_data, options_file, indent=2)

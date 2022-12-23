@@ -1,4 +1,8 @@
-import datetime, inspect
+"""
+Custom logging module.
+"""
+import datetime
+import inspect
 from styles import colors
 
 LOG_FILE = "log.txt"
@@ -8,6 +12,8 @@ WARNING = colors.Yellow
 DEBUG = colors.Cyan
 FATAL = colors.Magenta
 CRITICAL = colors.Blue
+
+# pylint: disable=missing-function-docstring
 
 def info(message):
     curframe = inspect.currentframe()
@@ -55,7 +61,6 @@ def critical(message):
     print(CRITICAL+ log_message +colors.ResetAll)
 
 def output(log_message):
-    f = open(LOG_FILE, "a")
-    f.write("\n"+str(log_message))
-    f.close()
-
+    file = open(LOG_FILE, "a", encoding="utf-8")
+    file.write("\n"+str(log_message))
+    file.close()
