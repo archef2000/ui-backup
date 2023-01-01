@@ -398,5 +398,6 @@ def next_backup(last_backup=0):
     config = google_api.generate_config()["config"]
     backup_time = last_backup + timedelta(days=int(config["days_between_backups"]))
     if config["backup_time_of_day"]:
-        backup_time.hour,backup_time.minute = map(int,config["backup_time_of_day"].split(":"))
+        backup_time_hour,backup_time_minute = map(int,config["backup_time_of_day"].split(":"))
+        backup_time = backup_time.replace(hour=backup_time_hour,minute=backup_time_minute)
     return backup_time.timestamp()
