@@ -112,7 +112,7 @@ def is_backup(filename):
     """
     Determines if a file is a backup file.
     """
-    if os.path.isdir(filename):
+    if os.path.isdir(filename) or filename.endswith('.zip'):
         return False
     try:
         with pyzipper.AESZipFile(filename) as zip_file:
