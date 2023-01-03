@@ -112,6 +112,8 @@ def is_backup(filename):
     """
     Determines if a file is a backup file.
     """
+    if if os.path.isdir(filename):
+        return False
     try:
         with pyzipper.AESZipFile(filename) as zip_file:
             return "info.json" in zip_file.namelist()
