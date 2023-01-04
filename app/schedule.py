@@ -17,6 +17,7 @@ def timer_backup():
     while True:
         if not os.path.exists(os.path.join(settings.DATA_FOLDER ,"credentials.dat")):
             time.sleep(5)
+            continue
         if backups.next_backup() - time.time() < 5*60 and not settings.backup_running:
             backups.request()
         time.sleep(5*60)
@@ -57,3 +58,14 @@ def refresh_drive_data():
 
 backup_schedule_schedule = threading.Thread(target=refresh_drive_data,daemon=True)
 backup_schedule_schedule.start()
+
+def create_dir(dir):
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+
+def first_setup():
+    create_dir(settings.BACKUP_FOLDER)
+    create_dir(settings.SOURCE_FOLDER)
+    create_dir(settings.DATA_FOLDER)
+
+first_setup()

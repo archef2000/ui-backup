@@ -228,7 +228,6 @@ def is_included(backup_name, backup_config, absolute_path, name):
     if backup_name in name or name == backup_name:
         return False
     if not backup_config["exclude_folders"] and not backup_config["extra_exclude_folders"]:
-        print("wdwad")
         return True
     all_exclude_folders = []
     if backup_config["extra_exclude_folders"]:

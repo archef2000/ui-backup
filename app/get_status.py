@@ -199,38 +199,32 @@ def ping_googleapis():
     """
     Ping all Google servers in the A record.
     """
-    if isinstance(settings.googleapis_ping, dict):
-        if settings.googleapis_ping["www.googleapis.com"] != "offline":
-            return settings.googleapis_ping
+    if settings.googleapis_ping.get("www.googleapis.com") != "offline":
+        return settings.googleapis_ping
     my_resolver = dns.resolver.Resolver()
-    my_resolver.nameservers = ['8.8.8.8',"4.4.4.4"]
+    my_resolver.nameservers = ['8.8.8.8', "4.4.4.4"]
     ping_out = {}
     try:
         result = my_resolver.resolve('www.googleapis.com', 'A')
         result = list({ip.to_text() for ip in result})
         result.append("www.googleapis.com")
-        result.append("192.123.233.32")
     except (dns.resolver.NXDOMAIN, dns.resolver.NoNameservers):
-        result = []
-    curr_ip = ""
-    def ping_ip():
-        temp_ip = curr_ip
+        ping_out = {"www.googleapis.com": "offline"}
+        settings.googleapis_ping = ping_out
+        return ping_out
+    def ping_ip(target_ip):
         try:
-            ping.ping(str(temp_ip), 80, 0.5).ping(1)
-            ping_out[str(temp_ip)] = "alive"
+            ping.ping(target_ip, 80, 0.5).ping(1)
+            ping_out[target_ip] = "alive"
         except TimeoutError:
-            ping_out[str(temp_ip)] = "offline"
-    try:
-        for curr_ip in result:
-            threading.Thread(target=ping_ip, args=()).start()
-        while True:
-            if len(result) == len(ping_out):
-                break
-            time.sleep(0.1)
-    except Exception:
-        ping_out[str("www.googleapis.com")] = "offline"
-    settings.googleapis_ping = dict(ping_out)
-    return settings.googleapis_ping
+            ping_out[target_ip] = "offline"
+    threads = [threading.Thread(target=ping_ip, args=(ip,)) for ip in result]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    settings.googleapis_ping = ping_out
+    return ping_out
 
 def get_bootstrap():
     """
@@ -310,7 +304,6 @@ def get_bootstrap():
         "authenticate_url": settings.HABACKUP_AUTHENTICATION_URL,
         "choose_folder_url":f'{picker_url}?{background_color}&{accent_color}&version=0.108.2',
         "is_custom_creds": config_settings["is_custom_creds"],
-        "folder_id": drive_requests.folder_id(),
         "is_specify_folder": config_settings["config"]["specify_backup_folder"],
         "ha_url_base": "/",
         "restore_backup_path": "hassio",
@@ -333,6 +326,8 @@ def get_bootstrap():
         "ignore_errors_for_now": False,
         "enable_drive_upload": True
         }
+    if os.path.exists(os.path.join(settings.DATA_FOLDER,"credentials.dat")):
+        rest_json_config["folder_id"] = drive_requests.folder_id()
     backup_name_keys = {}
     backup_name_keys["backup_name_keys"] = google_api.gen_backup_name_keys()
     backup_info = get_all_backup_info()
