@@ -1,23 +1,32 @@
 """
 Flask routing definitions.
 """
+# pylint: disable=unused-import
+# pylint: disable=unused-argument
+# pylint: disable=missing-function-docstring
 import os
 import base64
 import json
 import urllib
 import threading
 import logging
+import sys
 from flask import Flask,request,send_file,render_template,send_from_directory,jsonify,Response
 import logger
-# pylint: disable=unused-import
 import schedule
 import drive_requests
 import google_api
 import get_status
 import settings
 import backups
-# pylint: disable=missing-function-docstring
 template_dir = os.path.abspath('./static/')
+
+def banner(self,_):
+    print("Started Google Backup server.")
+
+cli = sys.modules['flask.cli']
+cli.show_server_banner = banner #lambda *x: None
+
 app = Flask(__name__, template_folder=template_dir)
 app.config['JSONIFY_PRETTYPRINT_REGULAR'] = True
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0

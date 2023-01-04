@@ -59,11 +59,17 @@ def refresh_drive_data():
 backup_schedule_schedule = threading.Thread(target=refresh_drive_data,daemon=True)
 backup_schedule_schedule.start()
 
-def create_dir(dir):
-    if not os.path.exists(dir):
-        os.makedirs(dir)
+def create_dir(new_dir):
+    """
+    Check if directory exists and create it if not.
+    """
+    if not os.path.exists(new_dir):
+        os.makedirs(new_dir)
 
 def first_setup():
+    """
+    Create directories needed for the server.
+    """
     create_dir(settings.BACKUP_FOLDER)
     create_dir(settings.SOURCE_FOLDER)
     create_dir(settings.DATA_FOLDER)
