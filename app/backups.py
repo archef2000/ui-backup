@@ -127,9 +127,9 @@ def request(backup_name="",note="",retained_local=False,retain_drive=False):
     settings.backup_running = True
     backup_name = valid_backup_name(backup_name)
     threading.Thread(
-            target=_create,daemon = True,
-            args=(backup_name,note,retained_local,retain_drive,),
-            name="Background Backup",).start()
+        target=_create,daemon = True,
+        args=(backup_name,note,retained_local,retain_drive,),
+        name="Background Backup",).start()
     return backup_name
 
 def valid_backup_name(backup_name):
@@ -218,7 +218,11 @@ def _create(backup_name,note,retained_local,retained_drive):
     finally:
         settings.backup_running = False
         settings.running_backup_info = {}
-    threading.Thread(target=drive_requests.upload_file, args=(backup_name,retained_drive,)).start()
+    if os.path.exists(os.path.join(settings.DATA_FOLDER,"credentions.dat")):
+        threading.Thread(
+                target=drive_requests.upload_file,
+                args=(backup_name,retained_drive,)
+            ).start()
     return backup_name
 
 def is_included(backup_name, backup_config, absolute_path, name):
@@ -226,6 +230,8 @@ def is_included(backup_name, backup_config, absolute_path, name):
     Check if a file or folder should be included from the backup.
     """
     if backup_name in name or name == backup_name:
+        return False
+    if os.path.islink(absolute_path):
         return False
     if not backup_config["exclude_folders"] and not backup_config["extra_exclude_folders"]:
         return True
