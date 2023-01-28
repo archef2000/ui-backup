@@ -157,7 +157,7 @@ def _create(backup_name,note,retained_local,retained_drive):
     settings.backup_running = True
     backup_config = google_api.generate_config()["config"]
     backup_zip_name = os.path.join(settings.BACKUP_FOLDER, backup_name + ".zip")
-    password=backup_config["backup_password"]
+    password=backup_config.get("backup_password","")
     protected = password != ""
     backup_info = gen_info(backup_name,protected)
     json_backup_info = json.loads(backup_info)
@@ -187,7 +187,7 @@ def _create(backup_name,note,retained_local,retained_drive):
                 zip_file.writestr("note.txt", note)
             if retained_local:
                 zip_file.writestr("retained", "")
-            if protected or True:
+            if protected:
                 zip_file.setencryption(pyzipper.WZ_AES, nbits=256)
                 zip_file.pwd=password.encode()
             for root, folders, files in os.walk(settings.SOURCE_FOLDER):
@@ -218,7 +218,7 @@ def _create(backup_name,note,retained_local,retained_drive):
     finally:
         settings.backup_running = False
         settings.running_backup_info = {}
-    if os.path.exists(os.path.join(settings.DATA_FOLDER,"credentions.dat")):
+    if os.path.exists(os.path.join(settings.DATA_FOLDER,"credentials.dat")):
         threading.Thread(
                 target=drive_requests.upload_file,
                 args=(backup_name,retained_drive,)

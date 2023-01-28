@@ -423,7 +423,7 @@ def drive_retained(file_id):
     url = f"{base_url}{file_id}?{query_string}"
     headers = {'Authorization':'Bearer '+access_token(),}
     file_json = requests.get(url,timeout=10,headers=headers).json()
-    return file_json["appProperties"].get("RETAINED",False)
+    return converting.str_to_bool(file_json["appProperties"].get("RETAINED",False))
 
 def delete_file(file_id):
     """

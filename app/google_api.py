@@ -130,8 +130,9 @@ def generate_config():
         result["defaults"][item] = ""
     result["is_custom_creds"] = False
     result["config"] = result["defaults"].copy()
-    if os.path.isfile(os.path.join(settings.DATA_FOLDER,"credentials.dat")):
+    if os.path.exists(os.path.join(settings.DATA_FOLDER,"credentials.dat")):
         result["backup_folder"] = drive_requests.folder_id()
+    if os.path.exists(os.path.join(settings.DATA_FOLDER,"options.json")):
         with open(settings.DATA_FOLDER+'options.json',encoding="utf-8") as options_file:
             options_data = json.load(options_file)
         for item in options_data:

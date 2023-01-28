@@ -5,7 +5,7 @@ All constants for configuring the backup programm.
 DATA_FOLDER = "./../data/"
 SOURCE_FOLDER = "./../source/"
 BACKUP_FOLDER = "./../backups/"
-DRIVE_FOLDER_NAME = "Docker Backup 2"
+DRIVE_FOLDER_NAME = "Docker Backup"
 HABACKUP_AUTHENTICATION_URL = "https://habackup.io/drive/authorize"
 LOG_LEVEL = "info"
 LOG_FILE = "log.txt"
